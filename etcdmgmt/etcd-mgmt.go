@@ -18,7 +18,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-// ExecName is to indicate the executable name, useful for mocking in tests
+// ExecName is the etcd executable name, useful for mocking in tests
 var (
 	listenClientUrls   string
 	advClientUrls      string
@@ -31,12 +31,13 @@ var (
 	etcdConfFile       = etcdConfDir + "etcdenv.conf"
 )
 
-// checkETCDHealth() is to ensure that etcd process have come up properlly or not
-func checkETCDHealth(val time.Duration, listenClientUrls string) bool {
+// checkETCDHealth ensures that etcd has come up properly
+func checkETCDHealth(waitTime time.Duration, listenClientUrls string) bool {
 	result := struct{ Health string }{}
+
 	// Checking health of etcd. Health of the etcd should be true,
 	// means etcd have initialized properly before using any etcd command
-	timer := time.NewTimer(time.Second * val)
+	timer := time.NewTimer(time.Second * waitTime)
 	for {
 		// Waiting for 15 second. Within 15 second health of etcd should
 		// be true otherwise it should throw an error
@@ -66,7 +67,7 @@ func checkETCDHealth(val time.Duration, listenClientUrls string) bool {
 	return true
 }
 
-// StartETCD() is to bring up etcd instance
+// StartETCD brings up an etcd instance
 func StartETCD(args []string) (*os.Process, error) {
 	start, pid := isETCDStartNeeded()
 	if start == false {
@@ -91,15 +92,18 @@ func StartETCD(args []string) (*os.Process, error) {
 		return nil, err
 	}
 
-	// Check the health of node whether etcd have come up properly or not
+	// Wait for etcd to come up
 	if check := checkETCDHealth(15, args[1]); check != true {
 		log.Fatal("Health of etcd is not proper. Check etcd configuration.")
 	}
-	log.WithField("pid", etcdCmd.Process.Pid).Debug("etcd pid")
+
+	log.WithField("pid", etcdCmd.Process.Pid).Debug("etcd started")
+
 	if err := writeETCDPidFile(etcdCmd.Process.Pid); err != nil {
 		etcdCmd.Process.Kill()
 		return nil, err
 	}
+
 	return etcdCmd.Process, nil
 }
 
@@ -118,11 +122,11 @@ func writeETCDPidFile(pid int) error {
 	return nil
 }
 
-// isETCDStartNeeded() reads etcd.pid file
-// @ if pid is not found returns true
-// @ if pid is found, checks for the process with the pid, if a running instance
-//   is found then check whether etcd health is ok, if so then return true else
-//   false
+// isETCDStartNeeded decides if etcd needs to be started by reading the etcd pidfile.
+// If a pid is found, checks if the process is running.
+// If the process is running, checks if etcd health is good.
+// Returns false and the pid if health is good.
+// Returns true and -1 in any other case.
 func isETCDStartNeeded() (bool, int) {
 	pid := -1
 	start := true
@@ -137,7 +141,7 @@ func isETCDStartNeeded() (bool, int) {
 		if exist := utils.CheckProcessExist(pid); exist == true {
 			hostname, err := os.Hostname()
 			if err != nil {
-				log.Fatal("Could not able to get hostname")
+				log.Fatal("Could not get hostname")
 			}
 			listenClientUrls := "http://" + hostname + ":2379"
 			_, err = http.Get(listenClientUrls + "/health")
@@ -174,9 +178,9 @@ func initETCDArgVar() {
 	initialAdvPeerUrls = "http://" + context.HostIP + ":2380"
 }
 
-// ETCDStartInit() Check whether etcd environment variable present or not
-// If it present then start etcd without --initial-cluster flag
-// other wise start etcd normally.
+// ETCDStartInit checks whether etcd environment variable is present.
+// If present, etcd is started without `--initial-cluster` flag.
+// Else etcd is started normally.
 func ETCDStartInit() (*os.Process, error) {
 	initETCDArgVar()
 
@@ -224,7 +228,7 @@ func ETCDStartInit() (*os.Process, error) {
 	return nil, err
 }
 
-//StartStandAloneETCD() will Start default etcd by considering single server node
+// StartStandAloneETCD starts etcd in single server mode
 func StartStandAloneETCD() (*os.Process, error) {
 	args := []string{"-listen-client-urls", listenClientUrls,
 		"-advertise-client-urls", advClientUrls,
@@ -235,28 +239,28 @@ func StartStandAloneETCD() (*os.Process, error) {
 	return StartETCD(args)
 }
 
-// StopETCD() will Stop etcd process on the node
+// StopETCD stops etcd process
 func StopETCD(etcdCtx *os.Process) error {
 	err := etcdCtx.Kill()
 	if err != nil {
-		log.Error("Could not able to kill etcd daemon")
+		log.WithError(err).Error("Could not kill etcd daemon")
 		return err
 	}
 	_, err = etcdCtx.Wait()
 	if err != nil {
-		log.Error("Could not able to kill etcd daemon")
+		log.WithError(err).Error("Could not kill etcd daemon")
 		return err
 	}
 	return nil
 }
 
-// ReStartETCD() will restart etcd process
+// ReStartETCD restarts etcd
 func ReStartETCD() (*os.Process, error) {
 	// Stop etcd process
 	etcdCtx := context.EtcdProcessCtx
 	err := StopETCD(etcdCtx)
 	if err != nil {
-		log.Error("Could not able to stop etcd daemon")
+		log.WithError(err).Error("Could not stop etcd daemon")
 		return nil, err
 	}
 
