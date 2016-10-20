@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+set -x
 
 # This script builds the glusterd2-test docker image.
 # It is mainly designed to run on the Docker Hub via the hooks mechanism just
