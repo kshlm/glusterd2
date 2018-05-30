@@ -54,6 +54,7 @@ func NewTxn(ctx context.Context) *Txn {
 	}).WithPrefix(prefix)
 
 	t.Ctx.Logger().Debug("new transaction created")
+	expTxn.Add("initiated_txn_in_progress", 1)
 	return t
 }
 
@@ -71,13 +72,6 @@ func NewTxnWithLocks(ctx context.Context, lockIDs ...string) (*Txn, error) {
 	return t, nil
 }
 
-// Cleanup cleans the leftovers after a transaction ends
-// TODO: Remove this function
-func (t *Txn) Cleanup() {
-	store.Store.Delete(context.TODO(), t.Ctx.Prefix(), clientv3.WithPrefix())
-	expTxn.Add("initiated_txn_in_progress", -1)
-}
-
 // Done releases any obtained locks and cleans up the transaction namespace
 // Done must be called after a transaction ends
 func (t *Txn) Done() {
@@ -85,7 +79,8 @@ func (t *Txn) Done() {
 	for _, locker := range t.locks {
 		locker.Unlock(context.Background())
 	}
-	t.Cleanup()
+	store.Store.Delete(context.TODO(), t.Ctx.Prefix(), clientv3.WithPrefix())
+	expTxn.Add("initiated_txn_in_progress", -1)
 }
 
 func (t *Txn) checkAlive() error {
@@ -116,7 +111,6 @@ func (t *Txn) Do() error {
 	}
 
 	t.Ctx.Logger().Debug("Starting transaction")
-	expTxn.Add("initiated_txn_in_progress", 1)
 
 	for i, s := range t.Steps {
 		if s.Skip {
